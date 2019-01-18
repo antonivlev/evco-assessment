@@ -3,10 +3,21 @@ import curses
 import random
 import operator
 from functools import partial
+import numpy as np
+from deap import gp
+from deap import algorithms
+from deap import base
+from deap import creator
+from deap import tools
+
 
 S_RIGHT, S_LEFT, S_UP, S_DOWN = 0,1,2,3
 XSIZE,YSIZE = 14,14
 NFOOD = 1 # NOTE: YOU MAY NEED TO ADD A CHECK THAT THERE ARE ENOUGH SPACES LEFT FOR THE FOOD (IF THE TAIL IS VERY LONG)
+
+def if_then_else(condition, out1, out2):
+    out1() if condition() else out2()
+
 
 # This class can be used to create a basic player object (snake agent)
 class SnakePlayer(list):
@@ -28,7 +39,7 @@ class SnakePlayer(list):
 		self.food = []
 
 	def getAheadLocation(self):
-		self.ahead = [ self.body[0][0] + (self.direction == S_DOWN and 1) + (self.direction == S_UP and -1), self.body[0][1] + (self.direction == S_LEFT and -1) + (self.direction == S_RIGHT and 1)] 
+		self.ahead = [ self.body[0][0] + (self.direction == S_DOWN and 1) + (self.direction == S_UP and -1), self.body[0][1] + (self.direction == S_LEFT and -1) + (self.direction == S_RIGHT and 1)]
 
 	def updatePosition(self):
 		self.getAheadLocation()
@@ -54,6 +65,18 @@ class SnakePlayer(list):
 		if self.body[0] in self.body[1:]: self.hit = True
 		return( self.hit )
 
+	# SENSING
+	def if_food_ahead(self, out1, out2):
+		return partial(if_then_else, self.sense_food_ahead, out1, out2)
+
+	def if_wall_ahead(self, out1, out2):
+		return partial(if_then_else, self.sense_wall_ahead, out1, out2)
+
+	def if_tail_ahead(self, out1, out2):
+		return partial(if_then_else, self.sense_tail_ahead, out1, out2)
+
+
+	# SENSING HELPERS
 	def sense_wall_ahead(self):
 		self.getAheadLocation()
 		return( self.ahead[0] == 0 or self.ahead[0] == (YSIZE-1) or self.ahead[1] == 0 or self.ahead[1] == (XSIZE-1) )
@@ -68,6 +91,7 @@ class SnakePlayer(list):
 
 # This function places a food item in the environment
 def placeFood(snake):
+	#random.seed(10)
 	food = []
 	while len(food) < NFOOD:
 		potentialfood = [random.randint(1, (YSIZE-2)), random.randint(1, (XSIZE-2))]
@@ -79,12 +103,47 @@ def placeFood(snake):
 
 snake = SnakePlayer()
 
+def evaluateSnakeStrategy(individual):
+	#totalScore = sum([-10 if runGame(individual)[0] == 0 else runGame(individual)[0] for i in range(4)])
+	scoresAndTimes = [runGame(individual) for i in range(1)]
+	totalScore = sum([-10 if scoreTime[0] == 0 else scoreTime[0] for scoreTime in scoresAndTimes])
+	avgTime = np.mean([scoreTime[1] for scoreTime in scoresAndTimes])
+
+	return totalScore, avgTime
+
+pset = gp.PrimitiveSet("main", 0)
+pset.addPrimitive(snake.if_food_ahead, 2)
+pset.addPrimitive(snake.if_wall_ahead, 2)
+pset.addPrimitive(snake.if_tail_ahead, 2)
+pset.addTerminal(snake.changeDirectionUp)
+pset.addTerminal(snake.changeDirectionDown)
+pset.addTerminal(snake.changeDirectionLeft)
+pset.addTerminal(snake.changeDirectionRight)
+
+creator.create("FitnessFunc", base.Fitness, weights=(1.0,1.0))
+creator.create("Individual", gp.PrimitiveTree, fitness=creator.FitnessFunc)
+
+toolbox = base.Toolbox()
+
+# Attribute generator
+toolbox.register("expr_init", gp.genFull, pset=pset, min_=1, max_=4)
+
+# Structure initializers
+toolbox.register("individual", tools.initIterate, creator.Individual, toolbox.expr_init)
+toolbox.register("population", tools.initRepeat, list, toolbox.individual)
+
+toolbox.register("select", tools.selTournament, tournsize=7)
+toolbox.register("expr_mut", gp.genFull, min_=0, max_=3)
+toolbox.register("mate", gp.cxOnePoint)
+toolbox.register("mutate", gp.mutUniform, expr=toolbox.expr_mut, pset=pset)
+toolbox.register("evaluate", evaluateSnakeStrategy)
+
 
 # This outline function is the same as runGame (see below). However,
 # it displays the game graphically and thus runs slower
 # This function is designed for you to be able to view and assess
 # your strategies, rather than use during the course of evolution
-def displayStrategyRun():
+def displayStrategyRun(individual):
 	global snake
 	global pset
 
@@ -112,9 +171,11 @@ def displayStrategyRun():
 		# Set up the display
 		win.border(0)
 		win.addstr(0, 2, 'Score : ' + str(snake.score) + ' ')
- 		win.getch()
+		win.getch()
 
 		## EXECUTE THE SNAKE'S BEHAVIOUR HERE ##
+		updateAction = gp.compile(individual, pset)
+		updateAction()
 
 		snake.updatePosition()
 
@@ -124,7 +185,7 @@ def displayStrategyRun():
 			food = placeFood(snake)
 			for f in food: win.addch(f[0], f[1], '@')
 			timer = 0
-		else:    
+		else:
 			last = snake.body.pop()
 			win.addch(last[0], last[1], ' ')
 			timer += 1 # timesteps since last eaten
@@ -147,7 +208,7 @@ def displayStrategyRun():
 # you need to modify it for running your agents through the game for evaluation
 # which will depend on what type of EA you have used, etc.
 # Feel free to make any necessary modifications to this section.
-def runGame():
+def runGame(individual):
 	global snake
 
 	totalScore = 0
@@ -158,6 +219,8 @@ def runGame():
 	while not snake.snakeHasCollided() and not timer == XSIZE * YSIZE:
 
 		## EXECUTE THE SNAKE'S BEHAVIOUR HERE ##
+		updateAction = gp.compile(individual, pset)
+		updateAction()
 
 		snake.updatePosition()
 
@@ -165,19 +228,39 @@ def runGame():
 			snake.score += 1
 			food = placeFood(snake)
 			timer = 0
-		else:    
+		else:
 			snake.body.pop()
 			timer += 1 # timesteps since last eaten
 
 		totalScore += snake.score
+		# print("-- timer:", timer)
 
-	return totalScore,
+	return totalScore, timer
 
+
+hof = tools.HallOfFame(1)
 
 def main():
 	global snake
 	global pset
+	pop = toolbox.population(n=100)
+	stats = tools.Statistics(lambda ind: ind.fitness.values)
+	stats.register("avg", np.mean, axis=0)
+	stats.register("std", np.std, axis=0)
+	stats.register("min", np.min, axis=0)
+	stats.register("max", np.max, axis=0)
 
-	## THIS IS WHERE YOUR CORE EVOLUTIONARY ALGORITHM WILL GO #
+	pop, log = algorithms.eaSimple(pop, toolbox, cxpb=0.5, mutpb=0.3, ngen=20,
+									stats=stats, halloffame=hof, verbose=True)
+
+
+def seeBest():
+	displayStrategyRun(hof[0])
 
 main()
+# expr = gp.genFull(pset, 1, 2)
+# tree = gp.PrimitiveTree(expr)
+# f = gp.compile(tree, pset)
+# s = runGame(tree)
+# print(str(tree))
+# print("score:", s)
