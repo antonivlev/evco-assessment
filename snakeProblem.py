@@ -34,7 +34,7 @@ class SnakePlayer(list):
 	def _reset(self):
 		self.direction = S_RIGHT
 		self.body[:] = [ [4,10], [4,9], [4,8], [4,7], [4,6], [4,5], [4,4], [4,3], [4,2], [4,1],[4,0] ]
-		self.score = 1
+		self.score = 0
 		self.ahead = []
 		self.food = []
 
@@ -67,7 +67,7 @@ class SnakePlayer(list):
 	def changeDirectionLeft(self):
 		self.direction = S_LEFT
 
-	# SENSING PRIMITIVES
+	# SENSING PRIMITIVES - TODO: add sensing like if_wall_left, if_tail_left
 	def if_food_ahead(self, out1, out2):
 		return partial(if_then_else, self.sense_food_ahead, out1, out2)
 
@@ -117,13 +117,21 @@ def placeFood(snake):
 snake = SnakePlayer()
 
 def evaluateSnakeStrategy(individual):
-	# seeded run of the game
-	seed = int(random.random()*100)
-	random.seed(seed)
-	individual.seed = seed
-	totalScore = runGame(individual)[0]
+	maxSeed = 0
+	maxFitness = 0
+	totalFitness = 0
+	for i in range(3):
+		# seeded run of the game
+		seed = int(random.random()*100)
+		random.seed(seed)
+		fitness = runGame(individual)[0]
+		totalFitness += fitness
+		if fitness > maxFitness:
+			maxFitness = fitness
+			maxSeed = seed
 
-	return totalScore,
+	individual.seed = maxSeed
+	return totalFitness,
 
 pset = gp.PrimitiveSet("main", 0)
 
@@ -146,14 +154,14 @@ creator.create("Individual", gp.PrimitiveTree, fitness=creator.FitnessFunc)
 toolbox = base.Toolbox()
 
 # Attribute generator
-toolbox.register("expr_init", gp.genFull, pset=pset, min_=1, max_=3)
+toolbox.register("expr_init", gp.genFull, pset=pset, min_=1, max_=15)
 
 # Structure initializers
 toolbox.register("individual", tools.initIterate, creator.Individual, toolbox.expr_init)
 toolbox.register("population", tools.initRepeat, list, toolbox.individual)
 
-toolbox.register("select", tools.selTournament, tournsize=7)
-toolbox.register("expr_mut", gp.genFull, min_=0, max_=3)
+toolbox.register("select", tools.selTournament, tournsize=20)
+toolbox.register("expr_mut", gp.genFull, min_=0, max_=4)
 toolbox.register("mate", gp.cxOnePoint)
 toolbox.register("mutate", gp.mutUniform, expr=toolbox.expr_mut, pset=pset)
 toolbox.register("evaluate", evaluateSnakeStrategy)
@@ -266,14 +274,14 @@ hof = tools.HallOfFame(1)
 def main():
 	global snake
 	global pset
-	pop = toolbox.population(n=50)
+	pop = toolbox.population(n=40)
 	stats = tools.Statistics(lambda ind: ind.fitness.values)
 	stats.register("avg", np.mean, axis=0)
 	stats.register("std", np.std, axis=0)
 	stats.register("min", np.min, axis=0)
 	stats.register("max", np.max, axis=0)
 
-	pop, log = algorithms.eaSimple(pop, toolbox, cxpb=0.3, mutpb=0.2, ngen=20,
+	pop, log = algorithms.eaSimple(pop, toolbox, cxpb=0.2, mutpb=0.7, ngen=20,
 									stats=stats, halloffame=hof, verbose=True)
 
 
@@ -281,6 +289,11 @@ def seeBest():
 	print(str(hof[0]))
 	random.seed(hof[0].seed)
 	displayStrategyRun(hof[0])
+
+def testBest():
+	print(str(hof[0]))
+	displayStrategyRun(hof[0])
+
 
 main()
 # expr = gp.genFull(pset, 1, 2)
