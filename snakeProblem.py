@@ -34,7 +34,7 @@ class SnakePlayer(list):
 	def _reset(self):
 		self.direction = S_RIGHT
 		self.body[:] = [ [4,10], [4,9], [4,8], [4,7], [4,6], [4,5], [4,4], [4,3], [4,2], [4,1],[4,0] ]
-		self.score = 0
+		self.score = 1
 		self.ahead = []
 		self.food = []
 
@@ -47,6 +47,14 @@ class SnakePlayer(list):
 
 	## You are free to define more sensing options to the snake
 
+	def snakeHasCollided(self):
+		self.hit = False
+		if self.body[0][0] == 0 or self.body[0][0] == (YSIZE-1) or self.body[0][1] == 0 or self.body[0][1] == (XSIZE-1): self.hit = True
+		if self.body[0] in self.body[1:]: self.hit = True
+		return( self.hit )
+
+
+	# MOVEMENT TERMINALS
 	def changeDirectionUp(self):
 		self.direction = S_UP
 
@@ -59,13 +67,7 @@ class SnakePlayer(list):
 	def changeDirectionLeft(self):
 		self.direction = S_LEFT
 
-	def snakeHasCollided(self):
-		self.hit = False
-		if self.body[0][0] == 0 or self.body[0][0] == (YSIZE-1) or self.body[0][1] == 0 or self.body[0][1] == (XSIZE-1): self.hit = True
-		if self.body[0] in self.body[1:]: self.hit = True
-		return( self.hit )
-
-	# SENSING
+	# SENSING PRIMITIVES
 	def if_food_ahead(self, out1, out2):
 		return partial(if_then_else, self.sense_food_ahead, out1, out2)
 
@@ -74,6 +76,18 @@ class SnakePlayer(list):
 
 	def if_tail_ahead(self, out1, out2):
 		return partial(if_then_else, self.sense_tail_ahead, out1, out2)
+
+	def if_moving_up(self, out1, out2):
+		return partial(if_then_else, lambda: self.direction == S_UP, out1, out2)
+
+	def if_moving_down(self, out1, out2):
+		return partial(if_then_else, lambda: self.direction == S_DOWN, out1, out2)
+
+	def if_moving_left(self, out1, out2):
+		return partial(if_then_else, lambda: self.direction == S_LEFT, out1, out2)
+
+	def if_moving_right(self, out1, out2):
+		return partial(if_then_else, lambda: self.direction == S_RIGHT, out1, out2)
 
 
 	# SENSING HELPERS
@@ -91,7 +105,6 @@ class SnakePlayer(list):
 
 # This function places a food item in the environment
 def placeFood(snake):
-	#random.seed(10)
 	food = []
 	while len(food) < NFOOD:
 		potentialfood = [random.randint(1, (YSIZE-2)), random.randint(1, (XSIZE-2))]
@@ -104,29 +117,36 @@ def placeFood(snake):
 snake = SnakePlayer()
 
 def evaluateSnakeStrategy(individual):
-	#totalScore = sum([-10 if runGame(individual)[0] == 0 else runGame(individual)[0] for i in range(4)])
-	scoresAndTimes = [runGame(individual) for i in range(1)]
-	totalScore = sum([-10 if scoreTime[0] == 0 else scoreTime[0] for scoreTime in scoresAndTimes])
-	avgTime = np.mean([scoreTime[1] for scoreTime in scoresAndTimes])
+	# seeded run of the game
+	seed = int(random.random()*100)
+	random.seed(seed)
+	individual.seed = seed
+	totalScore = runGame(individual)[0]
 
-	return totalScore, avgTime
+	return totalScore,
 
 pset = gp.PrimitiveSet("main", 0)
+
 pset.addPrimitive(snake.if_food_ahead, 2)
 pset.addPrimitive(snake.if_wall_ahead, 2)
 pset.addPrimitive(snake.if_tail_ahead, 2)
+pset.addPrimitive(snake.if_moving_up, 2)
+pset.addPrimitive(snake.if_moving_down, 2)
+pset.addPrimitive(snake.if_moving_left, 2)
+pset.addPrimitive(snake.if_moving_right, 2)
+
 pset.addTerminal(snake.changeDirectionUp)
 pset.addTerminal(snake.changeDirectionDown)
 pset.addTerminal(snake.changeDirectionLeft)
 pset.addTerminal(snake.changeDirectionRight)
 
-creator.create("FitnessFunc", base.Fitness, weights=(1.0,1.0))
+creator.create("FitnessFunc", base.Fitness, weights=(1.0,))
 creator.create("Individual", gp.PrimitiveTree, fitness=creator.FitnessFunc)
 
 toolbox = base.Toolbox()
 
 # Attribute generator
-toolbox.register("expr_init", gp.genFull, pset=pset, min_=1, max_=4)
+toolbox.register("expr_init", gp.genFull, pset=pset, min_=1, max_=3)
 
 # Structure initializers
 toolbox.register("individual", tools.initIterate, creator.Individual, toolbox.expr_init)
@@ -150,7 +170,7 @@ def displayStrategyRun(individual):
 	routine = gp.compile(individual, pset)
 
 	curses.initscr()
-	win = curses.newwin(YSIZE, XSIZE, 0, 0)
+	win = curses.newwin(YSIZE, XSIZE, 0+5, 0)
 	win.keypad(1)
 	curses.noecho()
 	curses.curs_set(0)
@@ -171,6 +191,9 @@ def displayStrategyRun(individual):
 		# Set up the display
 		win.border(0)
 		win.addstr(0, 2, 'Score : ' + str(snake.score) + ' ')
+		# for possible debugging later
+		#win.addstr(1, 2, 'Fitns : ' + str(individual.runningFitness) + ' ')
+
 		win.getch()
 
 		## EXECUTE THE SNAKE'S BEHAVIOUR HERE ##
@@ -243,18 +266,20 @@ hof = tools.HallOfFame(1)
 def main():
 	global snake
 	global pset
-	pop = toolbox.population(n=100)
+	pop = toolbox.population(n=50)
 	stats = tools.Statistics(lambda ind: ind.fitness.values)
 	stats.register("avg", np.mean, axis=0)
 	stats.register("std", np.std, axis=0)
 	stats.register("min", np.min, axis=0)
 	stats.register("max", np.max, axis=0)
 
-	pop, log = algorithms.eaSimple(pop, toolbox, cxpb=0.5, mutpb=0.3, ngen=20,
+	pop, log = algorithms.eaSimple(pop, toolbox, cxpb=0.3, mutpb=0.2, ngen=20,
 									stats=stats, halloffame=hof, verbose=True)
 
 
 def seeBest():
+	print(str(hof[0]))
+	random.seed(hof[0].seed)
 	displayStrategyRun(hof[0])
 
 main()
