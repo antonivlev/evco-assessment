@@ -2,15 +2,16 @@
 import curses
 import random
 import operator
-from functools import partial
 import numpy as np
+import pygraphviz as pgv
+
+from math import sqrt
+from functools import partial
 from deap import gp
 from deap import algorithms
 from deap import base
 from deap import creator
 from deap import tools
-
-import pygraphviz as pgv
 
 
 
@@ -70,7 +71,52 @@ class SnakePlayer(list):
 	def changeDirectionLeft(self):
 		self.direction = S_LEFT
 
-	# SENSING PRIMITIVES - TODO: add sensing like if_wall_left, if_tail_left
+	# SENSING PRIMITIVES
+
+
+	def does_dir_get_closer_to_food(self, dir):
+		new_ahead = [
+			self.body[0][0] +
+			(dir == S_DOWN and 1) +
+			(dir == S_UP and -1),
+			self.body[0][1] +
+			(dir == S_LEFT and -1) +
+			(dir == S_RIGHT and 1)
+		]
+		if self.ahead != []:
+			return distToFood(new_ahead, self) <= distToFood(self.ahead, self)
+		else:
+			return False
+
+	def if_right_gets_closer_to_food(self, out1, out2):
+		return partial(
+			if_then_else,
+			partial(self.does_dir_get_closer_to_food, S_RIGHT),
+			out1,
+			out2
+		)
+	def if_left_gets_closer_to_food(self, out1, out2):
+		return partial(
+			if_then_else,
+			partial(self.does_dir_get_closer_to_food, S_LEFT),
+			out1,
+			out2
+		)
+	def if_up_gets_closer_to_food(self, out1, out2):
+		return partial(
+			if_then_else,
+			partial(self.does_dir_get_closer_to_food, S_UP),
+			out1,
+			out2
+		)
+	def if_down_gets_closer_to_food(self, out1, out2):
+		return partial(
+			if_then_else,
+			partial(self.does_dir_get_closer_to_food, S_DOWN),
+			out1,
+			out2
+		)
+
 	def if_food_ahead(self, out1, out2):
 		return partial(if_then_else, self.sense_food_ahead, out1, out2)
 
@@ -123,17 +169,20 @@ def evaluateSnakeStrategy(individual):
 	maxSeed = 0
 	maxFitness = 0
 	totalFitness = 0
-	for i in range(1):
+	foods = []
+	for i in range(3):
 		# seeded run of the game
 		seed = int(random.random()*100)
 		random.seed(seed)
 		fitness = runGame(individual)[0]
+		foods.append(individual.food_eaten)
 		totalFitness += fitness
 		if fitness > maxFitness:
 			maxFitness = fitness
 			maxSeed = seed
 
 	individual.seed = maxSeed
+	individual.avg_food = np.mean(foods)
 	return totalFitness,
 
 pset = gp.PrimitiveSet("main", 0)
@@ -145,6 +194,10 @@ pset.addPrimitive(snake.if_moving_up, 2)
 pset.addPrimitive(snake.if_moving_down, 2)
 pset.addPrimitive(snake.if_moving_left, 2)
 pset.addPrimitive(snake.if_moving_right, 2)
+pset.addPrimitive(snake.if_right_gets_closer_to_food, 2)
+pset.addPrimitive(snake.if_left_gets_closer_to_food, 2)
+pset.addPrimitive(snake.if_up_gets_closer_to_food, 2)
+pset.addPrimitive(snake.if_down_gets_closer_to_food, 2)
 
 pset.addTerminal(snake.changeDirectionUp)
 pset.addTerminal(snake.changeDirectionDown)
@@ -237,6 +290,10 @@ def displayStrategyRun(individual):
 	return snake.score,
 
 
+
+def distToFood(ahead, snake):
+	return sqrt((ahead[0] - snake.food[0][0])**2 + (ahead[1] - snake.food[0][1])**2)
+
 # This outline function provides partial code for running the game with an evolved agent
 # There is no graphical output, and it runs rapidly, making it ideal for
 # you need to modify it for running your agents through the game for evaluation
@@ -244,6 +301,7 @@ def displayStrategyRun(individual):
 # Feel free to make any necessary modifications to this section.
 def runGame(individual):
 	global snake
+	individual.food_eaten = 0
 
 	totalScore = 0
 
@@ -259,17 +317,18 @@ def runGame(individual):
 		snake.updatePosition()
 
 		if snake.body[0] in food:
-			snake.score += 1
+			individual.food_eaten += 1
+			snake.score += 10
 			food = placeFood(snake)
 			timer = 0
 		else:
 			snake.body.pop()
 			timer += 1 # timesteps since last eaten
 
-		totalScore += snake.score
+		totalScore += snake.score + (1/distToFood(snake.ahead, snake))*10
 		# print("-- timer:", timer)
 
-	return totalScore, timer
+	return totalScore,
 
 
 hof = tools.HallOfFame(1)
@@ -277,20 +336,23 @@ hof = tools.HallOfFame(1)
 def main():
 	global snake
 	global pset
-	pop = toolbox.population(n=10000)
-	stats = tools.Statistics(lambda ind: ind.fitness.values)
-	stats.register("avg", np.mean, axis=0)
-	stats.register("std", np.std, axis=0)
-	stats.register("min", np.min, axis=0)
-	stats.register("max", np.max, axis=0)
+	pop = toolbox.population(n=5000)
+	stats_fit  = tools.Statistics(lambda ind: ind.fitness.values)
+	stats_food = tools.Statistics(lambda ind: ind.avg_food)
+	mstats = tools.MultiStatistics(fitness=stats_fit, food=stats_food)
+	mstats.register("avg", np.mean)
+	mstats.register("std", np.std)
+	mstats.register("min", np.min)
+	mstats.register("max", np.max)
 
-	pop, log = algorithms.eaSimple(pop, toolbox, cxpb=0.2, mutpb=0.5, ngen=6,
-									stats=stats, halloffame=hof, verbose=True)
+	pop, log = algorithms.eaSimple(pop, toolbox, cxpb=0.2, mutpb=0.5, ngen=10,
+									stats=mstats, halloffame=hof, verbose=True)
 
 
 def seeBest():
 	print(str(hof[0]))
 	random.seed(hof[0].seed)
+	drawTree(hof[0])
 	displayStrategyRun(hof[0])
 
 def testBest():
