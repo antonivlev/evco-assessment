@@ -10,13 +10,16 @@ from deap import base
 from deap import creator
 from deap import tools
 
+import pygraphviz as pgv
+
+
 
 S_RIGHT, S_LEFT, S_UP, S_DOWN = 0,1,2,3
 XSIZE,YSIZE = 14,14
 NFOOD = 1 # NOTE: YOU MAY NEED TO ADD A CHECK THAT THERE ARE ENOUGH SPACES LEFT FOR THE FOOD (IF THE TAIL IS VERY LONG)
 
 def if_then_else(condition, out1, out2):
-    out1() if condition() else out2()
+	out1() if condition() else out2()
 
 
 # This class can be used to create a basic player object (snake agent)
@@ -27,14 +30,14 @@ class SnakePlayer(list):
 	def __init__(self):
 		self.direction = S_RIGHT
 		self.body = [ [4,10], [4,9], [4,8], [4,7], [4,6], [4,5], [4,4], [4,3], [4,2], [4,1],[4,0] ]
-		self.score = 0
+		self.score = 1
 		self.ahead = []
 		self.food = []
 
 	def _reset(self):
 		self.direction = S_RIGHT
 		self.body[:] = [ [4,10], [4,9], [4,8], [4,7], [4,6], [4,5], [4,4], [4,3], [4,2], [4,1],[4,0] ]
-		self.score = 0
+		self.score = 1
 		self.ahead = []
 		self.food = []
 
@@ -120,7 +123,7 @@ def evaluateSnakeStrategy(individual):
 	maxSeed = 0
 	maxFitness = 0
 	totalFitness = 0
-	for i in range(3):
+	for i in range(1):
 		# seeded run of the game
 		seed = int(random.random()*100)
 		random.seed(seed)
@@ -154,14 +157,14 @@ creator.create("Individual", gp.PrimitiveTree, fitness=creator.FitnessFunc)
 toolbox = base.Toolbox()
 
 # Attribute generator
-toolbox.register("expr_init", gp.genFull, pset=pset, min_=1, max_=15)
+toolbox.register("expr_init", gp.genFull, pset=pset, min_=1, max_=5)
 
 # Structure initializers
 toolbox.register("individual", tools.initIterate, creator.Individual, toolbox.expr_init)
 toolbox.register("population", tools.initRepeat, list, toolbox.individual)
 
-toolbox.register("select", tools.selTournament, tournsize=20)
-toolbox.register("expr_mut", gp.genFull, min_=0, max_=4)
+toolbox.register("select", tools.selTournament, tournsize=10)
+toolbox.register("expr_mut", gp.genFull, min_=1, max_=3)
 toolbox.register("mate", gp.cxOnePoint)
 toolbox.register("mutate", gp.mutUniform, expr=toolbox.expr_mut, pset=pset)
 toolbox.register("evaluate", evaluateSnakeStrategy)
@@ -274,14 +277,14 @@ hof = tools.HallOfFame(1)
 def main():
 	global snake
 	global pset
-	pop = toolbox.population(n=40)
+	pop = toolbox.population(n=10000)
 	stats = tools.Statistics(lambda ind: ind.fitness.values)
 	stats.register("avg", np.mean, axis=0)
 	stats.register("std", np.std, axis=0)
 	stats.register("min", np.min, axis=0)
 	stats.register("max", np.max, axis=0)
 
-	pop, log = algorithms.eaSimple(pop, toolbox, cxpb=0.2, mutpb=0.7, ngen=20,
+	pop, log = algorithms.eaSimple(pop, toolbox, cxpb=0.2, mutpb=0.5, ngen=6,
 									stats=stats, halloffame=hof, verbose=True)
 
 
@@ -294,8 +297,25 @@ def testBest():
 	print(str(hof[0]))
 	displayStrategyRun(hof[0])
 
+def drawTree(expr):
+	nodes, edges, labels = gp.graph(expr)
+
+	# Plot the tree
+	g = pgv.AGraph(nodesep=1.0)
+	g.add_nodes_from(nodes)
+	g.add_edges_from(edges)
+	g.layout(prog="dot")
+
+	for i in nodes:
+		n = g.get_node(i)
+		n.attr["label"] = labels[i]
+
+	g.draw("tree.pdf")
+
+
 
 main()
+
 # expr = gp.genFull(pset, 1, 2)
 # tree = gp.PrimitiveTree(expr)
 # f = gp.compile(tree, pset)
