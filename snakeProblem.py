@@ -71,23 +71,9 @@ class SnakePlayer(list):
 	def changeDirectionLeft(self):
 		self.direction = S_LEFT
 
+
 	# SENSING PRIMITIVES
-
-
-	def does_dir_get_closer_to_food(self, dir):
-		new_ahead = [
-			self.body[0][0] +
-			(dir == S_DOWN and 1) +
-			(dir == S_UP and -1),
-			self.body[0][1] +
-			(dir == S_LEFT and -1) +
-			(dir == S_RIGHT and 1)
-		]
-		if self.ahead != []:
-			return distToFood(new_ahead, self) <= distToFood(self.ahead, self)
-		else:
-			return False
-
+	#
 	def if_right_gets_closer_to_food(self, out1, out2):
 		return partial(
 			if_then_else,
@@ -117,15 +103,36 @@ class SnakePlayer(list):
 			out2
 		)
 
+
+	# food
 	def if_food_ahead(self, out1, out2):
 		return partial(if_then_else, self.sense_food_ahead, out1, out2)
 
+
+	# wall avoidance
 	def if_wall_ahead(self, out1, out2):
 		return partial(if_then_else, self.sense_wall_ahead, out1, out2)
 
+
+	# tail avoidance
 	def if_tail_ahead(self, out1, out2):
 		return partial(if_then_else, self.sense_tail_ahead, out1, out2)
 
+	# tail and wall avoidance
+	def if_death_left(self, out1, out2):
+		return partial(if_then_else, lambda: self.does_dir_kill(S_LEFT), out1, out2)
+
+	def if_death_right(self, out1, out2):
+		return partial(if_then_else, lambda: self.does_dir_kill(S_RIGHT), out1, out2)
+
+	def if_death_up(self, out1, out2):
+		return partial(if_then_else, lambda: self.does_dir_kill(S_UP), out1, out2)
+
+	def if_death_down(self, out1, out2):
+		return partial(if_then_else, lambda: self.does_dir_kill(S_DOWN), out1, out2)
+
+
+	# hmm
 	def if_moving_up(self, out1, out2):
 		return partial(if_then_else, lambda: self.direction == S_UP, out1, out2)
 
@@ -140,6 +147,32 @@ class SnakePlayer(list):
 
 
 	# SENSING HELPERS
+	def does_dir_get_closer_to_food(self, dir):
+		new_ahead = [
+			self.body[0][0] +
+			(dir == S_DOWN and 1) +
+			(dir == S_UP and -1),
+			self.body[0][1] +
+			(dir == S_LEFT and -1) +
+			(dir == S_RIGHT and 1)
+		]
+		if self.ahead != []:
+			return distToFood(new_ahead, self) <= distToFood(self.ahead, self)
+		else:
+			return False
+
+	def does_dir_kill(self, dir):
+		new_ahead = [
+			self.body[0][0] +
+			(dir == S_DOWN and 1) +
+			(dir == S_UP and -1),
+			self.body[0][1] +
+			(dir == S_LEFT and -1) +
+			(dir == S_RIGHT and 1)
+		]
+		# 		tail 					or 	wall collision
+		return (new_ahead in self.body) or (new_ahead == [])
+
 	def sense_wall_ahead(self):
 		self.getAheadLocation()
 		return( self.ahead[0] == 0 or self.ahead[0] == (YSIZE-1) or self.ahead[1] == 0 or self.ahead[1] == (XSIZE-1) )
@@ -168,32 +201,38 @@ snake = SnakePlayer()
 def evaluateSnakeStrategy(individual):
 	maxSeed = 0
 	maxFitness = 0
-	totalFitness = 0
+	fitnesses = []
 	foods = []
-	for i in range(3):
+	for i in range(4):
 		# seeded run of the game
 		seed = int(random.random()*100)
 		random.seed(seed)
 		fitness = runGame(individual)[0]
 		foods.append(individual.food_eaten)
-		totalFitness += fitness
+		fitnesses.append(fitness)
 		if fitness > maxFitness:
 			maxFitness = fitness
 			maxSeed = seed
 
 	individual.seed = maxSeed
 	individual.avg_food = np.mean(foods)
-	return totalFitness,
+	var_foods = np.var(foods)
+	return np.mean(fitnesses), individual.avg_food/(var_foods + 1)
 
 pset = gp.PrimitiveSet("main", 0)
 
-pset.addPrimitive(snake.if_food_ahead, 2)
-pset.addPrimitive(snake.if_wall_ahead, 2)
-pset.addPrimitive(snake.if_tail_ahead, 2)
-pset.addPrimitive(snake.if_moving_up, 2)
-pset.addPrimitive(snake.if_moving_down, 2)
-pset.addPrimitive(snake.if_moving_left, 2)
-pset.addPrimitive(snake.if_moving_right, 2)
+#followPath()
+#pset.addPrimitive(snake.if_food_ahead, 2)
+# pset.addPrimitive(snake.if_wall_ahead, 2)
+# pset.addPrimitive(snake.if_tail_ahead, 2)
+pset.addPrimitive(snake.if_death_left, 2)
+pset.addPrimitive(snake.if_death_right, 2)
+pset.addPrimitive(snake.if_death_up, 2)
+pset.addPrimitive(snake.if_death_down, 2)
+# pset.addPrimitive(snake.if_moving_up, 2)
+# pset.addPrimitive(snake.if_moving_down, 2)
+# pset.addPrimitive(snake.if_moving_left, 2)
+# pset.addPrimitive(snake.if_moving_right, 2)
 pset.addPrimitive(snake.if_right_gets_closer_to_food, 2)
 pset.addPrimitive(snake.if_left_gets_closer_to_food, 2)
 pset.addPrimitive(snake.if_up_gets_closer_to_food, 2)
@@ -204,7 +243,7 @@ pset.addTerminal(snake.changeDirectionDown)
 pset.addTerminal(snake.changeDirectionLeft)
 pset.addTerminal(snake.changeDirectionRight)
 
-creator.create("FitnessFunc", base.Fitness, weights=(1.0,))
+creator.create("FitnessFunc", base.Fitness, weights=(1.0,0.0,))
 creator.create("Individual", gp.PrimitiveTree, fitness=creator.FitnessFunc)
 
 toolbox = base.Toolbox()
@@ -216,12 +255,11 @@ toolbox.register("expr_init", gp.genFull, pset=pset, min_=1, max_=5)
 toolbox.register("individual", tools.initIterate, creator.Individual, toolbox.expr_init)
 toolbox.register("population", tools.initRepeat, list, toolbox.individual)
 
-toolbox.register("select", tools.selTournament, tournsize=10)
-toolbox.register("expr_mut", gp.genFull, min_=1, max_=3)
+toolbox.register("select", tools.selTournament, tournsize=5)
+toolbox.register("expr_mut", gp.genFull, min_=1, max_=5)
 toolbox.register("mate", gp.cxOnePoint)
 toolbox.register("mutate", gp.mutUniform, expr=toolbox.expr_mut, pset=pset)
 toolbox.register("evaluate", evaluateSnakeStrategy)
-
 
 # This outline function is the same as runGame (see below). However,
 # it displays the game graphically and thus runs slower
@@ -318,14 +356,14 @@ def runGame(individual):
 
 		if snake.body[0] in food:
 			individual.food_eaten += 1
-			snake.score += 10
+			#snake.score += 1
 			food = placeFood(snake)
 			timer = 0
 		else:
 			snake.body.pop()
 			timer += 1 # timesteps since last eaten
 
-		totalScore += snake.score + (1/distToFood(snake.ahead, snake))*10
+		totalScore += snake.score - timer*0.08
 		# print("-- timer:", timer)
 
 	return totalScore,
@@ -337,7 +375,7 @@ def main():
 	global snake
 	global pset
 	pop = toolbox.population(n=5000)
-	stats_fit  = tools.Statistics(lambda ind: ind.fitness.values)
+	stats_fit  = tools.Statistics(lambda ind: ind.fitness.values[0])
 	stats_food = tools.Statistics(lambda ind: ind.avg_food)
 	mstats = tools.MultiStatistics(fitness=stats_fit, food=stats_food)
 	mstats.register("avg", np.mean)
@@ -345,7 +383,7 @@ def main():
 	mstats.register("min", np.min)
 	mstats.register("max", np.max)
 
-	pop, log = algorithms.eaSimple(pop, toolbox, cxpb=0.2, mutpb=0.5, ngen=10,
+	pop, log = algorithms.eaSimple(pop, toolbox, cxpb=0.8, mutpb=0.4, ngen=100,
 									stats=mstats, halloffame=hof, verbose=True)
 
 
