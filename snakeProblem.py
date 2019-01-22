@@ -71,7 +71,26 @@ class SnakePlayer(list):
 	def changeDirectionLeft(self):
 		self.direction = S_LEFT
 
+	def does_up_get_closer_to_food(self):
+		return self.does_dir_get_closer_to_food(S_UP)
+	def does_down_get_closer_to_food(self):
+		return self.does_dir_get_closer_to_food(S_DOWN)
+	def does_right_get_closer_to_food(self):
+		return self.does_dir_get_closer_to_food(S_RIGHT)
+	def does_left_get_closer_to_food(self):
+		return self.does_dir_get_closer_to_food(S_LEFT)
 
+	def does_up_safely_get_closer_to_food(self):
+		pass
+
+	def does_up_kill(self):
+		return self.does_dir_kill(S_UP)
+	def does_down_kill(self):
+		return self.does_dir_kill(S_DOWN)
+	def does_right_kill(self):
+		return self.does_dir_kill(S_RIGHT)
+	def does_left_kill(self):
+		return self.does_dir_kill(S_LEFT)
 
 	# SENSING HELPERS
 	def does_dir_get_closer_to_food(self, dir):
@@ -114,29 +133,28 @@ def placeFood(snake):
 snake = SnakePlayer()
 
 def evaluateSnakeStrategy(individual):
-	return sum(individual),
-	# maxSeed = 0
-	# maxFitness = 0
-	# fitnesses = []
-	# foods = []
-	# for i in range(4):
-	# 	# seeded run of the game
-	# 	seed = int(random.random()*100)
-	# 	random.seed(seed)
-	# 	fitness = runGame(individual)[0]
-	# 	foods.append(individual.food_eaten)
-	# 	fitnesses.append(fitness)
-	# 	if fitness > maxFitness:
-	# 		maxFitness = fitness
-	# 		maxSeed = seed
-	#
-	# individual.seed = maxSeed
-	# individual.avg_food = np.mean(foods)
-	# var_foods = np.var(foods)
-	# return np.mean(fitnesses), individual.avg_food/(var_foods + 1)
+	maxSeed = 0
+	maxFitness = 0
+	fitnesses = []
+	foods = []
+	for i in range(4):
+		# seeded run of the game
+		seed = int(random.random()*100)
+		random.seed(seed)
+		fitness = runGame(individual)[0]
+		foods.append(individual.food_eaten)
+		fitnesses.append(fitness)
+		if fitness > maxFitness:
+			maxFitness = fitness
+			maxSeed = seed
+
+	individual.seed = maxSeed
+	individual.avg_food = np.mean(foods)
+	var_foods = np.var(foods)
+	return np.mean(fitnesses), individual.avg_food, var_foods,
 
 
-creator.create("FitnessFunc", base.Fitness, weights=(1.0,))
+creator.create("FitnessFunc", base.Fitness, weights=(1.0,1.5,-1.0))
 creator.create("Individual", list, fitness=creator.FitnessFunc)
 #creator.create("Individual", gp.PrimitiveTree, fitness=creator.FitnessFunc)
 
@@ -148,7 +166,7 @@ toolbox.register("individual", tools.initRepeat, creator.Individual, toolbox.att
 toolbox.register("population", tools.initRepeat, list, toolbox.individual)
 
 # Structure initializers
-toolbox.register("mate", tools.cxTwoPoint)
+toolbox.register("mate", tools.cxOnePoint)
 toolbox.register("evaluate", evaluateSnakeStrategy)
 toolbox.register("mutate", tools.mutUniformInt, low=0, up=3, indpb=0.5)
 toolbox.register("select", tools.selTournament, tournsize=3)
@@ -161,7 +179,7 @@ def displayStrategyRun(individual):
 	global snake
 	global pset
 
-	routine = gp.compile(individual, pset)
+	#routine = gp.compile(individual, pset)
 
 	curses.initscr()
 	win = curses.newwin(YSIZE, XSIZE, 0+5, 0)
@@ -191,8 +209,7 @@ def displayStrategyRun(individual):
 		win.getch()
 
 		## EXECUTE THE SNAKE'S BEHAVIOUR HERE ##
-		updateAction = gp.compile(individual, pset)
-		updateAction()
+		updateDirection(individual, snake)
 
 		snake.updatePosition()
 
@@ -224,6 +241,23 @@ def displayStrategyRun(individual):
 def distToFood(ahead, snake):
 	return sqrt((ahead[0] - snake.food[0][0])**2 + (ahead[1] - snake.food[0][1])**2)
 
+
+def updateDirection(individual, snake):
+	inputs = [
+		snake.does_right_kill(),
+		snake.does_left_kill(),
+		snake.does_up_kill(),
+		snake.does_down_kill(),
+
+		snake.does_right_get_closer_to_food(),
+		snake.does_left_get_closer_to_food(),
+		snake.does_up_get_closer_to_food(),
+		snake.does_down_get_closer_to_food(),
+	]
+	# convert inputs from binary to decimal
+	action_ind = int( "".join(['1' if i else '0' for i in inputs]), 2 )
+	snake.direction = individual[action_ind]
+
 # This outline function provides partial code for running the game with an evolved agent
 # There is no graphical output, and it runs rapidly, making it ideal for
 # you need to modify it for running your agents through the game for evaluation
@@ -241,8 +275,7 @@ def runGame(individual):
 	while not snake.snakeHasCollided() and not timer == XSIZE * YSIZE:
 
 		## EXECUTE THE SNAKE'S BEHAVIOUR HERE ##
-		updateAction = getAction(individual, snake)
-		updateAction()
+		updateDirection(individual, snake)
 
 		snake.updatePosition()
 
@@ -267,23 +300,22 @@ pop = []
 def main():
 	global snake
 	global pop
-	pop = toolbox.population(n=1000)
+	pop = toolbox.population(n=10000)
 	stats_fit  = tools.Statistics(lambda ind: ind.fitness.values[0])
-	# stats_food = tools.Statistics(lambda ind: ind.avg_food)
-	mstats = tools.MultiStatistics(fitness=stats_fit)
+	stats_food = tools.Statistics(lambda ind: ind.avg_food)
+	mstats = tools.MultiStatistics(fitness=stats_fit, food=stats_food)
 	mstats.register("avg", np.mean)
 	mstats.register("std", np.std)
 	mstats.register("min", np.min)
 	mstats.register("max", np.max)
 
-	pop, log = algorithms.eaSimple(pop, toolbox, cxpb=0.4, mutpb=0.4, ngen=100,
+	pop, log = algorithms.eaSimple(pop, toolbox, cxpb=0.7, mutpb=0.4, ngen=1000,
 									stats=mstats, halloffame=hof, verbose=True)
 
 
 def seeBest():
 	print(str(hof[0]))
 	random.seed(hof[0].seed)
-	drawTree(hof[0])
 	displayStrategyRun(hof[0])
 
 def testBest():
