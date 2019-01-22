@@ -72,79 +72,6 @@ class SnakePlayer(list):
 		self.direction = S_LEFT
 
 
-	# SENSING PRIMITIVES
-	#
-	def if_right_gets_closer_to_food(self, out1, out2):
-		return partial(
-			if_then_else,
-			partial(self.does_dir_get_closer_to_food, S_RIGHT),
-			out1,
-			out2
-		)
-	def if_left_gets_closer_to_food(self, out1, out2):
-		return partial(
-			if_then_else,
-			partial(self.does_dir_get_closer_to_food, S_LEFT),
-			out1,
-			out2
-		)
-	def if_up_gets_closer_to_food(self, out1, out2):
-		return partial(
-			if_then_else,
-			partial(self.does_dir_get_closer_to_food, S_UP),
-			out1,
-			out2
-		)
-	def if_down_gets_closer_to_food(self, out1, out2):
-		return partial(
-			if_then_else,
-			partial(self.does_dir_get_closer_to_food, S_DOWN),
-			out1,
-			out2
-		)
-
-
-	# food
-	def if_food_ahead(self, out1, out2):
-		return partial(if_then_else, self.sense_food_ahead, out1, out2)
-
-
-	# wall avoidance
-	def if_wall_ahead(self, out1, out2):
-		return partial(if_then_else, self.sense_wall_ahead, out1, out2)
-
-
-	# tail avoidance
-	def if_tail_ahead(self, out1, out2):
-		return partial(if_then_else, self.sense_tail_ahead, out1, out2)
-
-	# tail and wall avoidance
-	def if_death_left(self, out1, out2):
-		return partial(if_then_else, lambda: self.does_dir_kill(S_LEFT), out1, out2)
-
-	def if_death_right(self, out1, out2):
-		return partial(if_then_else, lambda: self.does_dir_kill(S_RIGHT), out1, out2)
-
-	def if_death_up(self, out1, out2):
-		return partial(if_then_else, lambda: self.does_dir_kill(S_UP), out1, out2)
-
-	def if_death_down(self, out1, out2):
-		return partial(if_then_else, lambda: self.does_dir_kill(S_DOWN), out1, out2)
-
-
-	# hmm
-	def if_moving_up(self, out1, out2):
-		return partial(if_then_else, lambda: self.direction == S_UP, out1, out2)
-
-	def if_moving_down(self, out1, out2):
-		return partial(if_then_else, lambda: self.direction == S_DOWN, out1, out2)
-
-	def if_moving_left(self, out1, out2):
-		return partial(if_then_else, lambda: self.direction == S_LEFT, out1, out2)
-
-	def if_moving_right(self, out1, out2):
-		return partial(if_then_else, lambda: self.direction == S_RIGHT, out1, out2)
-
 
 	# SENSING HELPERS
 	def does_dir_get_closer_to_food(self, dir):
@@ -173,18 +100,6 @@ class SnakePlayer(list):
 		# 		tail 					or 	wall collision
 		return (new_ahead in self.body) or (new_ahead == [])
 
-	def sense_wall_ahead(self):
-		self.getAheadLocation()
-		return( self.ahead[0] == 0 or self.ahead[0] == (YSIZE-1) or self.ahead[1] == 0 or self.ahead[1] == (XSIZE-1) )
-
-	def sense_food_ahead(self):
-		self.getAheadLocation()
-		return self.ahead in self.food
-
-	def sense_tail_ahead(self):
-		self.getAheadLocation()
-		return self.ahead in self.body
-
 # This function places a food item in the environment
 def placeFood(snake):
 	food = []
@@ -199,67 +114,44 @@ def placeFood(snake):
 snake = SnakePlayer()
 
 def evaluateSnakeStrategy(individual):
-	maxSeed = 0
-	maxFitness = 0
-	fitnesses = []
-	foods = []
-	for i in range(4):
-		# seeded run of the game
-		seed = int(random.random()*100)
-		random.seed(seed)
-		fitness = runGame(individual)[0]
-		foods.append(individual.food_eaten)
-		fitnesses.append(fitness)
-		if fitness > maxFitness:
-			maxFitness = fitness
-			maxSeed = seed
+	return sum(individual),
+	# maxSeed = 0
+	# maxFitness = 0
+	# fitnesses = []
+	# foods = []
+	# for i in range(4):
+	# 	# seeded run of the game
+	# 	seed = int(random.random()*100)
+	# 	random.seed(seed)
+	# 	fitness = runGame(individual)[0]
+	# 	foods.append(individual.food_eaten)
+	# 	fitnesses.append(fitness)
+	# 	if fitness > maxFitness:
+	# 		maxFitness = fitness
+	# 		maxSeed = seed
+	#
+	# individual.seed = maxSeed
+	# individual.avg_food = np.mean(foods)
+	# var_foods = np.var(foods)
+	# return np.mean(fitnesses), individual.avg_food/(var_foods + 1)
 
-	individual.seed = maxSeed
-	individual.avg_food = np.mean(foods)
-	var_foods = np.var(foods)
-	return np.mean(fitnesses), individual.avg_food/(var_foods + 1)
 
-pset = gp.PrimitiveSet("main", 0)
-
-#followPath()
-#pset.addPrimitive(snake.if_food_ahead, 2)
-# pset.addPrimitive(snake.if_wall_ahead, 2)
-# pset.addPrimitive(snake.if_tail_ahead, 2)
-pset.addPrimitive(snake.if_death_left, 2)
-pset.addPrimitive(snake.if_death_right, 2)
-pset.addPrimitive(snake.if_death_up, 2)
-pset.addPrimitive(snake.if_death_down, 2)
-# pset.addPrimitive(snake.if_moving_up, 2)
-# pset.addPrimitive(snake.if_moving_down, 2)
-# pset.addPrimitive(snake.if_moving_left, 2)
-# pset.addPrimitive(snake.if_moving_right, 2)
-pset.addPrimitive(snake.if_right_gets_closer_to_food, 2)
-pset.addPrimitive(snake.if_left_gets_closer_to_food, 2)
-pset.addPrimitive(snake.if_up_gets_closer_to_food, 2)
-pset.addPrimitive(snake.if_down_gets_closer_to_food, 2)
-
-pset.addTerminal(snake.changeDirectionUp)
-pset.addTerminal(snake.changeDirectionDown)
-pset.addTerminal(snake.changeDirectionLeft)
-pset.addTerminal(snake.changeDirectionRight)
-
-creator.create("FitnessFunc", base.Fitness, weights=(1.0,0.0,))
-creator.create("Individual", gp.PrimitiveTree, fitness=creator.FitnessFunc)
+creator.create("FitnessFunc", base.Fitness, weights=(1.0,))
+creator.create("Individual", list, fitness=creator.FitnessFunc)
+#creator.create("Individual", gp.PrimitiveTree, fitness=creator.FitnessFunc)
 
 toolbox = base.Toolbox()
 
 # Attribute generator
-toolbox.register("expr_init", gp.genFull, pset=pset, min_=1, max_=5)
-
-# Structure initializers
-toolbox.register("individual", tools.initIterate, creator.Individual, toolbox.expr_init)
+toolbox.register("attr_dir", lambda: random.randint(0, 3))
+toolbox.register("individual", tools.initRepeat, creator.Individual, toolbox.attr_dir, 256)
 toolbox.register("population", tools.initRepeat, list, toolbox.individual)
 
-toolbox.register("select", tools.selTournament, tournsize=5)
-toolbox.register("expr_mut", gp.genFull, min_=1, max_=5)
-toolbox.register("mate", gp.cxOnePoint)
-toolbox.register("mutate", gp.mutUniform, expr=toolbox.expr_mut, pset=pset)
+# Structure initializers
+toolbox.register("mate", tools.cxTwoPoint)
 toolbox.register("evaluate", evaluateSnakeStrategy)
+toolbox.register("mutate", tools.mutUniformInt, low=0, up=3, indpb=0.5)
+toolbox.register("select", tools.selTournament, tournsize=3)
 
 # This outline function is the same as runGame (see below). However,
 # it displays the game graphically and thus runs slower
@@ -349,7 +241,7 @@ def runGame(individual):
 	while not snake.snakeHasCollided() and not timer == XSIZE * YSIZE:
 
 		## EXECUTE THE SNAKE'S BEHAVIOUR HERE ##
-		updateAction = gp.compile(individual, pset)
+		updateAction = getAction(individual, snake)
 		updateAction()
 
 		snake.updatePosition()
@@ -370,20 +262,21 @@ def runGame(individual):
 
 
 hof = tools.HallOfFame(1)
+pop = []
 
 def main():
 	global snake
-	global pset
-	pop = toolbox.population(n=5000)
+	global pop
+	pop = toolbox.population(n=1000)
 	stats_fit  = tools.Statistics(lambda ind: ind.fitness.values[0])
-	stats_food = tools.Statistics(lambda ind: ind.avg_food)
-	mstats = tools.MultiStatistics(fitness=stats_fit, food=stats_food)
+	# stats_food = tools.Statistics(lambda ind: ind.avg_food)
+	mstats = tools.MultiStatistics(fitness=stats_fit)
 	mstats.register("avg", np.mean)
 	mstats.register("std", np.std)
 	mstats.register("min", np.min)
 	mstats.register("max", np.max)
 
-	pop, log = algorithms.eaSimple(pop, toolbox, cxpb=0.8, mutpb=0.4, ngen=100,
+	pop, log = algorithms.eaSimple(pop, toolbox, cxpb=0.4, mutpb=0.4, ngen=100,
 									stats=mstats, halloffame=hof, verbose=True)
 
 
@@ -415,10 +308,11 @@ def drawTree(expr):
 
 
 main()
-
+#
 # expr = gp.genFull(pset, 1, 2)
 # tree = gp.PrimitiveTree(expr)
 # f = gp.compile(tree, pset)
+# print(str(tree))
 # s = runGame(tree)
 # print(str(tree))
 # print("score:", s)
