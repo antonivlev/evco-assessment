@@ -5,6 +5,8 @@ import operator
 import numpy as np
 import pygraphviz as pgv
 
+import pickle
+
 from math import sqrt
 from functools import partial
 from deap import gp
@@ -217,7 +219,7 @@ def evaluateSnakeStrategy(individual):
 	individual.seed = maxSeed
 	individual.avg_food = np.mean(foods)
 	var_foods = np.var(foods)
-	return np.mean(fitnesses), individual.avg_food/(var_foods + 1)
+	return np.mean(fitnesses), individual.avg_food
 
 pset = gp.PrimitiveSet("main", 0)
 
@@ -229,10 +231,10 @@ pset.addPrimitive(snake.if_death_left, 2)
 pset.addPrimitive(snake.if_death_right, 2)
 pset.addPrimitive(snake.if_death_up, 2)
 pset.addPrimitive(snake.if_death_down, 2)
-# pset.addPrimitive(snake.if_moving_up, 2)
-# pset.addPrimitive(snake.if_moving_down, 2)
-# pset.addPrimitive(snake.if_moving_left, 2)
-# pset.addPrimitive(snake.if_moving_right, 2)
+pset.addPrimitive(snake.if_moving_up, 2)
+pset.addPrimitive(snake.if_moving_down, 2)
+pset.addPrimitive(snake.if_moving_left, 2)
+pset.addPrimitive(snake.if_moving_right, 2)
 pset.addPrimitive(snake.if_right_gets_closer_to_food, 2)
 pset.addPrimitive(snake.if_left_gets_closer_to_food, 2)
 pset.addPrimitive(snake.if_up_gets_closer_to_food, 2)
@@ -363,18 +365,20 @@ def runGame(individual):
 			snake.body.pop()
 			timer += 1 # timesteps since last eaten
 
-		totalScore += snake.score - timer*0.08
+		totalScore += snake.score
 		# print("-- timer:", timer)
 
 	return totalScore,
 
 
 hof = tools.HallOfFame(1)
+logs = []
 
 def main():
 	global snake
 	global pset
-	pop = toolbox.population(n=5000)
+	global loga
+	pop = toolbox.population(n=500)
 	stats_fit  = tools.Statistics(lambda ind: ind.fitness.values[0])
 	stats_food = tools.Statistics(lambda ind: ind.avg_food)
 	mstats = tools.MultiStatistics(fitness=stats_fit, food=stats_food)
@@ -383,8 +387,14 @@ def main():
 	mstats.register("min", np.min)
 	mstats.register("max", np.max)
 
-	pop, log = algorithms.eaSimple(pop, toolbox, cxpb=0.8, mutpb=0.4, ngen=100,
+	pop, log = algorithms.eaSimple(pop, toolbox, cxpb=0.7, mutpb=0.4, ngen=30,
 									stats=mstats, halloffame=hof, verbose=True)
+
+	with open("data_50gens_simpleFitness", "wb+") as f:
+		pickle.dump(log, f)
+
+	with open("bestSnake", "wb+") as f:
+		pickle.dump(hof[0], f)
 
 
 def seeBest():
