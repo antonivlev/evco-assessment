@@ -300,7 +300,7 @@ pop = []
 def main():
 	global snake
 	global pop
-	pop = toolbox.population(n=10000)
+	pop = toolbox.population(n=1000)
 	stats_fit  = tools.Statistics(lambda ind: ind.fitness.values[0])
 	stats_food = tools.Statistics(lambda ind: ind.avg_food)
 	mstats = tools.MultiStatistics(fitness=stats_fit, food=stats_food)
